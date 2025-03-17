@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>AI-powered Resume Screening and Ranking System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@0.76.0/build/style.css">
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="module">
+        import { mount } from 'https://cdn.jsdelivr.net/npm/@stlite/browser@0.76.0/build/stlite.js';
+        
+        
+        const config = {
+            entrypoint: "streamlit_app.py",
+            files: {
+                "streamlit_app.py": `
+import streamlit as st
+import pandas as pd
+import re
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+def extract_text_from_pdf(file):
+    try:
+        return file.getvalue().decode('utf-8', errors='replace')
+    except Exception as e:
+        st.error(f"Error reading file: {str(e)}")
+        return None
+
+def preprocess_text(text):
+    if not text:
+        return ""
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = text.lower().strip()
+    return re.sub(r'\s+', ' ', text)
+
+def rank_resumes(job_description, resumes):
+    try:
+        documents = [job_description] + resumes
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform(documents)
+        similarity_scores = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
+        return similarity_scores
+    except Exception as e:
+        st.error(f"Error in ranking: {str(e)}")
+        return None
+
+st.title("AI Resume Ranking System")
+st.markdown("Upload job description and resumes (PDF text only)")
+
+jd = st.text_area("Paste Job Description:", height=200)
+uploaded_files = st.file_uploader(
+    "Upload Resumes (PDF files)",
+    type=["pdf"],
+    accept_multiple_files=True
+)
+
+if st.button("Process Resumes") and jd and uploaded_files:
+    with st.spinner("Analyzing resumes..."):
+        processed_jd = preprocess_text(jd)
+        resumes = []
+        resume_data = []
+        
+        for file in uploaded_files:
+            raw_text = extract_text_from_pdf(file)
+            if raw_text:
+                cleaned_text = preprocess_text(raw_text)
+                resumes.append(cleaned_text)
+                resume_data.append({
+                    'Filename': file.name,
+                    'Similarity Score': None
+                })
+        
+        if len(resumes) > 0:
+            scores = rank_resumes(processed_jd, resumes)
+            for i, score in enumerate(scores):
+                resume_data[i]['Similarity Score'] = score
+            
+            results_df = pd.DataFrame(resume_data)
+            results_df['Rank'] = results_df['Similarity Score'].rank(ascending=False)
+            results_df = results_df.sort_values('Rank')
+            
+            st.subheader("Ranking Results")
+            st.dataframe(
+                results_df.style.format({'Similarity Score': '{:.2%}'})
+                    .bar(subset=['Similarity Score'], color='#5fba7d'),
+                height=400
+            )
+        else:
+            st.warning("No valid resumes found")
+                `
+            },
+            requirements: [
+                "scikit-learn",
+                "pandas",
+                "numpy"
+            ]
+        };
+
+        // Add initialization wrapper
+        async function initializeApp() {
+            try {
+                await mount(config, document.getElementById("root"));
+                console.log("App mounted successfully");
+            } catch (error) {
+                console.error("Mounting failed:", error);
+                document.getElementById("root").innerHTML = 
+                    '<div style="color: red; padding: 20px;">' +
+                    'Initialization Error: ' + error.message + 
+                    '<br>Check browser console (F12) for details</div>';
+            }
+        }
+        
+        initializeApp();
+    </script>
+</body>
+</html>
